@@ -11,7 +11,7 @@ X_test = X_test / 255.0
 
 
 class Node:
-    def __init__(self, index: int, activation: Optional[np.float64] = None, bias: Optional[int] = None) -> None:
+    def __init__(self, index: int, activation: Optional[np.float64] = None, bias: Optional[np.float64] = None) -> None:
         self.index = index
         self.outbound_connection_list = []
         self.inbound_connection_list = []
@@ -24,24 +24,12 @@ class Node:
         else:
             self.bias = np.float64(round(random.random(), 2))
 
-    def increment_bias(self) -> None:
-        self.bias += 0.1
-
-    def decrement_bias(self) -> None:
-        self.bias -= 0.1
-
 
 class Connection:
     def __init__(self, n1: Node, n2: Node) -> None:
         self.n1 = n1
         self.n2 = n2
         self.weight = np.float64(round(random.random(), 2))
-
-    def increment_weight(self) -> None:
-        self.weight += 0.1
-
-    def decrement_weight(self) -> None:
-        self.weight -= 0.1
 
 
 class Layer:
@@ -67,7 +55,7 @@ class Layer:
                 connection = Connection(self.nodes[i], other_layer.nodes[j])
                 self.outbound_connections.append(connection)
                 self.nodes[i].outbound_connection_list.append(connection)
-                self.nodes[j].inbound_connection_list.append(connection)
+                other_layer.nodes[j].inbound_connection_list.append(connection)
 
 
 class Network:
@@ -121,22 +109,27 @@ class Network:
         for n in self.layers[-1].nodes:
             self.predV.append(n.activation)
 
-    def get_corrV(self) -> None:
+    def get_corrV(self) -> List[np.float64]:
         return self.corrV
 
-    def get_predV(self) -> None:
+    def get_predV(self) -> List[np.float64]:
         return self.predV
 
-    def get_corr(self) -> None:
+    def get_corr(self) -> np.int64:
         return np.argmax(self.corrV)
 
-    def get_pred(self) -> None:
+    def get_pred(self) -> np.int64:
         return np.argmax(self.predV)
 
+    def mean_squared_error(self) -> np.float64:
+        n = len(self.predV)
+        return (sum([(self.corrV[i] - self.predV[i])**2 for i in range(n)])) / n
 
+    def get_error_derivatives(self) -> List[np.float64]:
+        return list([self.predV[i] - self.corrV[i] for i in range(len(self.predV))])
 
-def mean_squared_error(n: int, corrV: List[int], predV: List[int]) -> np.float64:
-    return (sum([(corrV[i] - predV[i])**2 for i in range(n)])) / n
+    def backpropagate(self) -> None:
+        error_derivatives = self.get_error_derivatives()
 
 
 
@@ -150,10 +143,8 @@ def main() -> None:
             Layer(10)
             ]
     network = Network(layers, Y_train[0])
-    network.global_forward_pass_loop()
 
-
-    print(f"pred: {network.get_pred}\ncorr: {network.get_corr}")
+    print(f"pred: {network.get_pred()}\ncorr: {network.get_corr()}")
 
 
 
