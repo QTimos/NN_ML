@@ -8,6 +8,7 @@ from tensorflow.keras.datasets import mnist
 # normalizing the pixels from between 0, 255 to 0.0, 1.0
 X_train = X_train / 255.0
 X_test = X_test / 255.0
+LEARNING_RATE = 10.0
 
 
 class Node:
@@ -23,13 +24,14 @@ class Node:
             self.bias = bias
         else:
             self.bias = np.float64(round(random.random(), 2))
+        self.blame = 0
 
 
 class Connection:
     def __init__(self, n1: Node, n2: Node) -> None:
         self.n1 = n1
         self.n2 = n2
-        self.weight = np.float64(round(random.random(), 2))
+        self.weight = np.float64((random.random() - 0.5) * 0.1)
 
 
 class Layer:
@@ -59,10 +61,10 @@ class Layer:
 
 
 class Network:
-    def __init__(self, layers: List[Layer], corr: int) -> None:
+    def __init__(self, layers: List[Layer]) -> None:
         self.layers = layers
         self._connect_layers(self.layers)
-        self.corrV = self._set_corrV(corr)
+        self.corrV = []
         self.predV = []
 
     def _connect_layers(self, layers: List[Layer]) -> None:
@@ -98,7 +100,7 @@ class Network:
                 v.append(np.float64(0.0))
         return v
 
-    def update_input_layer(self, corr: int, list_of_values: Optional[List] = None) -> None:
+    def update_input_layer(self, list_of_values: np.ndarray, corr: np.uint8) -> None:
         for i, n in enumerate(self.layers[0].nodes):
             n.activation = list_of_values[i]
         self.corr = corr
@@ -129,22 +131,60 @@ class Network:
         return list([self.predV[i] - self.corrV[i] for i in range(len(self.predV))])
 
     def backpropagate(self) -> None:
-        error_derivatives = self.get_error_derivatives()
+        output_error_der = self.get_error_derivatives()
+        hidden_layers_deltas = []
+        last_layer_index = len(self.layers) - 1
+        for x in range(last_layer_index, 0, -1):
+            if x == last_layer_index:
+                for i, n in enumerate(self.layers[x].nodes):
+                    n.blame = ((2 / len(self.layers[x].nodes)) * output_error_der[i]) * n.activation * (1 - n.activation)
+            else:
+                for i, n in enumerate(self.layers[x].nodes):
+                    total_blame = sum([c.weight * c.n2.blame for c in n.outbound_connection_list])
+                    node_slope = n.activation * (1 - n.activation)
+                    n.blame = total_blame * node_slope
+        for x in range(1, last_layer_index + 1):
+            for i, n in enumerate(self.layers[x].nodes):
+                n.bias -= LEARNING_RATE * n.blame
+            for c in self.layers[x].inbound_connections:
+                c.weight -= LEARNING_RATE * c.n1.activation * c.n2.blame
+
+    def learn(self, image: np.ndarray, corr: np.uint8) -> None:
+        self.update_input_layer(image, corr)
+        self.global_forward_pass_loop()
+        self.backpropagate()
+
+    def test(self, image: np.ndarray, corr: np.uint8) -> None:
+        self.update_input_layer(image, corr)
+        self.global_forward_pass_loop()
+        self.print_results()
+
+    def print_results(self) -> None:
+        print(f"Correct was: {self.get_corr()}\nPredicted: {self.get_pred()}")
+        print(f"Error was: {self.mean_squared_error()}\n")
+
 
 
 
 def main() -> None:
     num_of_input_params = len(X_train[0]) * len(X_train[0][0])
-    list_of_values = list(itertools.chain.from_iterable(X_train[0]))
     layers = [
-            Layer(num_of_input_params, list_of_values),
+            Layer(num_of_input_params),
             Layer(16),
             Layer(16),
             Layer(10)
             ]
-    network = Network(layers, Y_train[0])
+    network = Network(layers)
+    test = 0
+    for i in range(len(X_train)):
+        if i % 20 == 0:
+            network.test(list(itertools.chain.from_iterable(X_test[test])), Y_test[test])
+            test += 1
+        else:
+            network.learn(list(itertools.chain.from_iterable(X_train[i])), Y_train[i])
 
-    print(f"pred: {network.get_pred()}\ncorr: {network.get_corr()}")
+
+#    print(f"pred: {network.get_pred()}\ncorr: {network.get_corr()}")
 
 
 
