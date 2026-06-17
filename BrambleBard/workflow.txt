@@ -1,0 +1,65 @@
+⏱️ Time Estimation (Worst-Case Scenario)
+	In the absolute worst-case scenario—where you run
+		into brutal tensor shape bugs, math errors,
+		and training issues—this project will take
+		about 120 hours to complete from scratch.
+
+	If you study and code for 2 hours every day,
+		it will take you exactly 60 days
+		(about 2 months) to fully finish
+		and polish it for your resume.
+
+
+Here is how those 120 hours break down so you can plan your routine:
+	Phase 1: The Math & Theory (20 Hours)Reading
+		the famous paper Attention Is All You Need,
+		sketching out tensor shapes on paper, and
+		understanding query, key, and value vectors.
+
+	Phase 2: Coding the Blocks (40 Hours)Writing the
+		Multi-Head Attention layer, Positional Encodings,
+		and Layer Normalization. This is where most of
+		your debugging hours will go.
+
+	Phase 3: Data & Assembly (30 Hours)Building the
+		tokenization pipeline (turning text into numbers)
+		and gluing the blocks together into a full Encoder/Decoder network.
+
+	Phase 4: Training & Tuning (20 Hours)Watching it
+		train on Shakespeare, fixing exploding gradients,
+		and tweaking hyperparameters until it prints out coherent text.
+
+	Phase 5: Resume & Portfolio Setup (10 Hours)Cleaning up
+		your Git repository, writing a clean ReadMe file,
+		and creating a visualization of the attention weights to show off your work.
+
+
+
+
+How to Present This on a Resume
+	To make these look professional, use PyTorch but only
+	for matrix math (like torch.matmul) and automatic gradients
+	(loss.backward). Do not use their pre-made layers.
+	Write the layers yourself.
+
+
+Prompt:
+	Act as an expert AI Research Engineer and elite educator. I am building a generative Transformer from scratch (GPT-style) named BrambleBard for my portfolio to display senior-level engineering skills. 
+
+	CONTEXT & CONSTRAINTS:
+	1. I already understand neural networks deeply and have built an MNIST network from scratch using NumPy. Do not give me high-level analogies or surface-level overviews.
+	2. My goal is to maximize my personal understanding of the math and architecture. 
+	3. I am using PyTorch ONLY for basic tensor operations (like torch.matmul) and automatic differentiation (loss.backward). I am NOT using torch.nn.Transformer, torch.nn.Linear, or any pre-made layers. I am coding the layers entirely by hand.
+
+	HOW TO HELP ME:
+	- When I ask for help with a component (e.g., Multi-Head Attention, Causal Masking, Positional Encoding), break down your explanation into:
+	  1. The Exact Math (Equations).
+	  2. Tensor Shapes (Input shape vs. Output shape at every single step).
+	  3. A Step-by-Step Implementation Guide.
+	- If I share an error, help me debug by checking tensor dimensions, matrix multiplication rules, and gradient flows. 
+	- DO NOT give me complete code blocks. Provide conceptual guidance, pseudo-steps, and mathematical clarity so I can write the code myself.
+
+	PROGRESS TRACKER:
+	- THINGS DONE: [None yet! Starting from scratch]
+	- THINGS WE'RE DOING: [Setting up Phase 1 / First Component]
+	- TO-DO: [Phase 1: Math & Theory, Phase 2: Coding Blocks, Phase 3: Assembly, Phase 4: Training, Phase 5: Portfolio Polish]
