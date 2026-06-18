@@ -16,7 +16,7 @@ from tensorflow.keras.datasets import mnist
 # normalizing the pixels from between 0, 255 to 0.0, 1.0
 X_train = X_train / 255.0
 X_test = X_test / 255.0
-LEARNING_RATE = 5.0
+LEARNING_RATE = 0.75
 
 class Layer:
     def __init__(
@@ -32,8 +32,6 @@ class Layer:
         self.node_blames = np.zeros(num_of_nodes_curr, dtype=np.float64)
         if num_of_nodes_prev:
             self.weights_matrix_of_inbound_connections = (np.random.rand(num_of_nodes_prev, num_of_nodes_curr) - 0.5) * 0.1
-        if num_of_nodes_next:
-            self.weights_matrix_of_outbound_connections = (np.random.rand(num_of_nodes_curr, num_of_nodes_next) - 0.5) * 0.1
 
 
 class Network:
@@ -92,7 +90,7 @@ class Network:
                             )
             else:
                 nl = self.layers[x + 1]
-                total_blame = np.dot(l.weights_matrix_of_outbound_connections, nl.node_blames)
+                total_blame = np.dot(nl.weights_matrix_of_inbound_connections, nl.node_blames)
                 node_slope = l.node_activations * (1 - l.node_activations)
                 l.node_blames = total_blame * node_slope
         for x in range(1, last_layer_index + 1):
