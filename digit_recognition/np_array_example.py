@@ -23,15 +23,14 @@ class Layer:
             self,
             num_of_nodes_curr: int,
             num_of_nodes_prev: Optional[int] = None,
-            num_of_nodes_next: Optional[int] = None
             ) -> None:
 
         self.num_of_nodes_curr = num_of_nodes_curr
-        self.node_activations = np.zeros(num_of_nodes_curr, dtype=np.float64)
-        self.node_biases = (np.random.rand(num_of_nodes_curr) - 0.5) * 0.1
-        self.node_blames = np.zeros(num_of_nodes_curr, dtype=np.float64)
+        self.node_activationsV = np.zeros(num_of_nodes_curr, dtype=np.float64)
+        self.node_biasesV = (np.random.rand(num_of_nodes_curr) - 0.5) * 0.1
+        self.node_gradientsV = np.zeros(num_of_nodes_curr, dtype=np.float64)
         if num_of_nodes_prev:
-            self.weights_matrix_of_inbound_connections = (np.random.rand(num_of_nodes_prev, num_of_nodes_curr) - 0.5) * 0.1
+            self.weights_of_inbound_connectionsM = (np.random.rand(num_of_nodes_prev, num_of_nodes_curr) - 0.5) * 0.1
 
 
 class Network:
@@ -47,8 +46,8 @@ class Network:
         self._set_predV()
 
     def _forward_pass_loop(self, layer: Layer, prev_layer: Layer) -> None:
-        weighted_sum = np.dot(prev_layer.node_activations, layer.weights_matrix_of_inbound_connections) + layer.node_biases
-        layer.node_activations = self._sigmoid(weighted_sum)
+        weighted_sum = np.dot(prev_layer.node_activationsV, layer.weights_of_inbound_connectionsM) + layer.node_biasesV
+        layer.node_activationsV = self._sigmoid(weighted_sum)
 
     def _sigmoid(self, value: Any) -> np.float64:
         return (1 / (1 + np.exp(-value)))
@@ -61,7 +60,7 @@ class Network:
                 self.corrV[i] = 0.0
 
     def _set_predV(self) -> None:
-        self.predV = self.layers[-1].node_activations
+        self.predV = self.layers[-1].node_activationsV
 
     def get_corrV(self) -> List[float]:
         return [round(n, 2) for n in self.corrV]
@@ -75,30 +74,28 @@ class Network:
     def get_pred(self) -> int:
         return int(np.argmax(self.predV))
 
-    def get_error_derivatives(self) -> List[np.float64]:
+    def get_error_diffs(self) -> List[np.float64]:
         return np.array([self.predV[i] - self.corrV[i] for i in range(len(self.predV))])
 
     def backpropagate(self) -> None:
-        output_error_der = self.get_error_derivatives()
         last_layer_index = self.num_of_layers - 1
         for x in range(last_layer_index, 0, -1):
             l = self.layers[x]
             if x == last_layer_index:
-                    l.node_blames = (
-                            ((2 / l.num_of_nodes_curr) * output_error_der)
-                            * l.node_activations * (1 - l.node_activations)
-                            )
+                    output_error_derV = (2 / l.num_of_nodes_curr) * self.get_error_diffs()
+                    activation_slopeV = l.node_activationsV * (1 - l.node_activationsV)
+                    l.node_gradientsV = (output_error_derV * activation_slopeV)
             else:
                 nl = self.layers[x + 1]
-                total_blame = np.dot(nl.weights_matrix_of_inbound_connections, nl.node_blames)
-                node_slope = l.node_activations * (1 - l.node_activations)
-                l.node_blames = total_blame * node_slope
+                next_layer_total_blameV = np.dot(nl.weights_of_inbound_connectionsM, nl.node_gradientsV)
+                activation_slopeV = l.node_activationsV * (1 - l.node_activationsV)
+                l.node_gradientsV = next_layer_total_blameV * activation_slopeV
         for x in range(1, last_layer_index + 1):
             l = self.layers[x]
             pl = self.layers[x - 1]
-            l.node_biases -= LEARNING_RATE * l.node_blames
-            weighted_gradient = np.outer(pl.node_activations, l.node_blames)
-            l.weights_matrix_of_inbound_connections -= LEARNING_RATE * weighted_gradient
+            l.node_biasesV -= LEARNING_RATE * l.node_gradientsV
+            weighted_gradient = np.outer(pl.node_activationsV, l.node_gradientsV)
+            l.weights_of_inbound_connectionsM -= LEARNING_RATE * weighted_gradient
 
     def mean_squared_error(self) -> np.float64:
         n = 10
@@ -106,7 +103,7 @@ class Network:
 
     def update_input_layer(self, list_of_values: np.ndarray, corr: np.uint8) -> None:
         for i in range(self.layers[0].num_of_nodes_curr):
-            self.layers[0].node_activations[i] = list_of_values[i]
+            self.layers[0].node_activationsV[i] = list_of_values[i]
         self._set_corrV(corr)
 
     def learn(self, image: np.ndarray, corr: np.uint8) -> None:
@@ -129,9 +126,9 @@ class Network:
 def main() -> None:
     num_of_input_params = len(X_train[0]) * len(X_train[0][0])
     layers = [
-            Layer(num_of_input_params, num_of_nodes_next=16),
-            Layer(16, num_of_nodes_prev=num_of_input_params, num_of_nodes_next= 16),
-            Layer(16, num_of_nodes_prev=16, num_of_nodes_next=10),
+            Layer(num_of_input_params),
+            Layer(16, num_of_nodes_prev=num_of_input_params),
+            Layer(16, num_of_nodes_prev=16),
             Layer(10, num_of_nodes_prev=16)
             ]
     network = Network(layers, 4)
