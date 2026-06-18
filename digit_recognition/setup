@@ -3,5 +3,5 @@
 python3 .setup.py
 source $(cat .TMP.txt)
 pip install --upgrade pip
-pip install tensorflow tensorflow-keras
+pip install tensorflow tensorflow-keras pygame
 rm .TMP.txt
