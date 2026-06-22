@@ -1,0 +1,9 @@
+#!/bin/bash
+
+G="$HOME/goinfre/texts"
+
+if [[ -d $G ]]; then
+	wget "https://www.gutenberg.org/files/2600/2600-0.txt" -O "$G/war_and_peace.txt"
+else
+	wget "https://www.gutenberg.org/files/2600/2600-0.txt" -O "$G/war_and_peace.txt"
+fi
