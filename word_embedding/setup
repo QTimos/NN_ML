@@ -1,5 +1,6 @@
 #!/bin/bash
 
+mkdir "$HOME/goinfre/texts" > /dev/null 2>&1
 G="$HOME/goinfre/texts"
 
 if [[ -d $G ]]; then

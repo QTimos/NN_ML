@@ -1,13 +1,16 @@
 import sys
 import json
+import random
 import numpy as np
 from pathlib import Path
 from typing import Generator, List, Union, Optional, Tuple
 CONTEXT_WINDOW_SIZE = 2
-VOCAB_SIZE = 5000
+VOCAB_SIZE = 50000
+MAX_PAIRS = 500000
+NEG_SAMPLES = 5
 VOCAB_COUNTER = 0
 EMBEDDING_DIM = 5
-LEARNING_RATE = 0.75
+LEARNING_RATE = 0.01
 VOCAB = {}
 INPUT_GRIDM = (np.random.rand(1, EMBEDDING_DIM) - 0.5 ) * 0.1
 OUTPUT_GRIDM = (np.random.rand(1, EMBEDDING_DIM) - 0.5 ) * 0.1
@@ -117,26 +120,15 @@ def tokenize(text: str) -> List[str]:
 
 def get_pairs(tokens: List[str]) -> List[Tuple[str]]:
     pairs = []
-    i = 0
-    while i < len(tokens):
-        word = tokens[i]
-        j = CONTEXT_WINDOW_SIZE
-        while j > 0:
-            context = [word]
-            if 0 <= i-j < len(tokens):
-                context.append(tokens[i-j])
-                if len(context) > 0 and (word, tokens[i-j]) not in pairs:
-                    pairs.append(tuple(context))
-            j -= 1
-        j = 1
-        while j <= CONTEXT_WINDOW_SIZE:
-            context = [word]
-            if 0 <= i+j < len(tokens):
-                context.append(tokens[i+j])
-                if len(context) > 0 and (word, tokens[i+j]) not in pairs:
-                    pairs.append(tuple(context))
-            j += 1
-        i += 1
+    seen = set()
+    for i, word in enumerate(tokens):
+        for j in range(1, CONTEXT_WINDOW_SIZE + 1):
+            for neighbor_i in (i - j, i + j):
+                if 0 <= neighbor_i < len(tokens):
+                    pair = (word, tokens[neighbor_i])
+                    if pair not in seen:
+                        seen.add(pair)
+                        pairs.append(pair)
     return pairs
 
 def word_to_id(word: str) -> int:
@@ -145,18 +137,16 @@ def word_to_id(word: str) -> int:
 def embed_word(pairs: List[Tuple[str]]) -> List[Tuple[int]]:
     id_pairs = []
     for p in pairs:
-        id_pairs.append((word_to_id(p[0]), word_to_id(p[1])))
+        if p[0] in VOCAB and p[1] in VOCAB:
+            id_pairs.append((word_to_id(p[0]), word_to_id(p[1])))
     return id_pairs
 
 def add_to_vocab(tokens: List[str]) -> None:
-    global VOCAB
-    global VOCAB_COUNTER
+    global VOCAB, VOCAB_COUNTER
     for t in tokens:
-        if t not in VOCAB and VOCAB_COUNTER <= VOCAB_SIZE:
+        if t not in VOCAB and VOCAB_COUNTER < VOCAB_SIZE:
             VOCAB[t] = VOCAB_COUNTER
             VOCAB_COUNTER += 1
-        elif VOCAB_COUNTER >= VOCAB_SIZE:
-            raise ValueError("Vocab size exceeded!!")
 
 def getting_the_probabilitiesV(idx: int) -> np.ndarray:
     centerV = INPUT_GRIDM[idx]
@@ -173,16 +163,47 @@ def getting_the_errorV(probsV: np.ndarray, pair: Tuple[int]) -> np.ndarray:
     return errorsV
 
 def learn_from_id_pairs(id_pairs: List[Tuple[int]]) -> None:
-    global INPUT_GRIDM
-    global OUTPUT_GRIDM
-    for p in id_pairs:
-        idx = p[0]
-        probsV = getting_the_probabilitiesV(idx)
-        errorsV = getting_the_errorV(probsV, p)
-        output_weighted_gradientV = np.outer(errorsV, INPUT_GRIDM[idx])
-        OUTPUT_GRIDM -= LEARNING_RATE * output_weighted_gradientV
-        input_weighted_gradientV = errorsV @ OUTPUT_GRIDM
-        INPUT_GRIDM[idx] -= LEARNING_RATE * input_weighted_gradientV
+    global INPUT_GRIDM, OUTPUT_GRIDM
+    vocab_size = INPUT_GRIDM.shape[0]
+    pairs = np.array(id_pairs)
+    center_ids = pairs[:, 0]
+    ctx_ids = pairs[:, 1]
+    center_vecs = INPUT_GRIDM[center_ids]
+    ctx_vecs = OUTPUT_GRIDM[ctx_ids]
+    pos_scores = np.sum(center_vecs * ctx_vecs, axis=1)
+    pos_sig = 1.0 / (1.0 + np.exp(-np.clip(pos_scores, -10, 10)))
+    pos_err = pos_sig - 1.0
+    neg_ids = np.random.randint(0, vocab_size, size=(len(id_pairs), NEG_SAMPLES))
+    neg_vecs = OUTPUT_GRIDM[neg_ids]
+    neg_scores = np.einsum('nd,nkd->nk', center_vecs, neg_vecs)
+    neg_sig = 1.0 / (1.0 + np.exp(-np.clip(neg_scores, -10, 10)))
+    pos_grad_in = pos_err[:, None] * ctx_vecs
+    neg_grad_in = np.einsum('nk,nkd->nd', neg_sig, neg_vecs)
+    input_grad = pos_grad_in + neg_grad_in
+    pos_grad_out = pos_err[:, None] * center_vecs
+    neg_grad_out = neg_sig[:, :, None] * center_vecs[:, None, :]
+    np.add.at(INPUT_GRIDM, center_ids, -LEARNING_RATE * input_grad)
+    np.add.at(OUTPUT_GRIDM, ctx_ids, -LEARNING_RATE * pos_grad_out)
+    np.add.at(OUTPUT_GRIDM, neg_ids.ravel(), -LEARNING_RATE * neg_grad_out.reshape(-1, OUTPUT_GRIDM.shape[1]))
+
+def test(string: str) -> List[str]:
+    tokens = tokenize(string)
+    results = []
+    for word in tokens:
+        if word not in VOCAB:
+            results.append(f"'{word}' not in vocabulary")
+            continue
+        idx = VOCAB[word]
+        word_vec = INPUT_GRIDM[idx]
+        norms = np.linalg.norm(INPUT_GRIDM, axis=1)
+        word_norm = np.linalg.norm(word_vec)
+        sims = (INPUT_GRIDM @ word_vec) / (norms * word_norm + 1e-8)
+        sims[idx] = -1
+        top_ids = np.argsort(sims)[::-1][:10]
+        reverse_vocab = {v: k for k, v in VOCAB.items()}
+        neighbors = [f"{reverse_vocab[i]} ({sims[i]:.3f})" for i in top_ids]
+        results.append(f"'{word}': {', '.join(neighbors)}")
+    return results
 
 def store_vocab_and_weights() -> None:
     with open(VOCAB_PATH, "w") as f:
@@ -209,17 +230,6 @@ def restore_vocab_and_weights(vocab_size: int) -> None:
         VOCAB_SIZE = vocab_size
         INPUT_GRIDM = (np.random.rand(VOCAB_SIZE, EMBEDDING_DIM) - 0.5 ) * 0.1
         OUTPUT_GRIDM = (np.random.rand(VOCAB_SIZE, EMBEDDING_DIM) - 0.5 ) * 0.1
-
-def run_training(file_path) -> None:
-    with open(file_path, "r") as f:
-        data = f.read()
-    tokens = tokenize(data)
-    restore_vocab_and_weights(len(set(tokens)))
-    str_pairs = get_pairs(tokens)
-    add_to_vocab(tokens)
-    id_pairs = embed_word(str_pairs)
-    learn_from_id_pairs(id_pairs)
-    store_vocab_and_weights()
 
 def main() -> None:
     if len(sys.argv) != 2:
@@ -271,6 +281,9 @@ def main() -> None:
             tokens = tokenize(data)
             str_pairs = get_pairs(tokens)
             id_pairs = embed_word(str_pairs)
+            if len(id_pairs) > MAX_PAIRS:
+                random.shuffle(id_pairs)
+                id_pairs = id_pairs[:MAX_PAIRS]
             learn_from_id_pairs(id_pairs)
             print(f" Trained successfully on: {file_path.name}")
         except Exception as e:
@@ -278,6 +291,9 @@ def main() -> None:
     print("Phase 4: Archiving models and vocabulary maps to storage...")
     store_vocab_and_weights()
     print("Training job complete!")
+    print("Testing!")
+    string = str(input("Enter your prompt: "))
+    print(test(string))
 
 
 
