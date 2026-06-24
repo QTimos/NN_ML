@@ -17,6 +17,8 @@ OUTPUT_GRIDM = (np.random.rand(1, EMBEDDING_DIM) - 0.5 ) * 0.1
 VOCAB_PATH = "./vocab.json"
 EMBEDDINGS_PATH = "./embeddings.npz"
 
+
+
 def usage() -> None:
     print("""
 Usage:
