@@ -4,18 +4,14 @@
 #   We just put everything into flat numpy arrays for faster
 #       calculation and lookup speed.
 #------------------------------------------------------------#
+
 from __future__ import annotations
 from typing import List, Optional, Any, Tuple
-import os
-import sys
 from multiprocessing import Process, Pipe
 
 
 def neural_network_process(conn) -> None:
-    import random
-    import itertools
     import numpy as np
-    from typing import List, Optional, Any
     from tensorflow.keras.datasets import mnist
     (X_train, Y_train), (X_test, Y_test) = mnist.load_data()
     X_train = X_train / 255.0
@@ -35,10 +31,15 @@ def neural_network_process(conn) -> None:
                 self.weights_of_inbound_connectionsM = np.random.randn(num_of_nodes_prev, num_of_nodes_curr) * std
                 self.node_biasesV = np.zeros(num_of_nodes_curr, dtype=np.float64)
             self.node_gradientsV = np.zeros(num_of_nodes_curr, dtype=np.float64)
+            self.raw: Any = None
+            self.node_rawV: Any = None
+            self.node_activationsM: Any = None
+            self.node_gradientsM: Any = None
 
 
     class Network:
-        def __init__(self, layers: List[Layer], num_of_layers: int) -> None:
+        def __init__(self, layers: List[Layer], num_of_layers: int, last_layer_size: int) -> None:
+            self.last_layer_size = last_layer_size
             self.layers = layers
             self.num_of_layers = num_of_layers
             self.corrV = np.zeros(10, dtype=np.float64)
@@ -69,7 +70,7 @@ def neural_network_process(conn) -> None:
             exp_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
             return exp_x / np.sum(exp_x, axis=-1, keepdims=True)
 
-        def _set_corrV(self, corr: np.int64):
+        def _set_corrV(self, corr: np.uint8):
             self.corrV.fill(0)
             self.corrV[corr] = 1.0
 
@@ -88,7 +89,7 @@ def neural_network_process(conn) -> None:
         def get_pred(self) -> int:
             return int(np.argmax(self.predV))
 
-        def get_error_diffs(self) -> List[np.float64]:
+        def get_error_diffs(self) -> Any:
             return self.predV - self.corrV
 
         def backpropagate(self) -> None:
@@ -109,8 +110,8 @@ def neural_network_process(conn) -> None:
                 weighted_gradient = np.outer(pl.node_activationsV, l.node_gradientsV)
                 l.weights_of_inbound_connectionsM -= LEARNING_RATE * weighted_gradient
 
-        def mean_squared_error(self) -> np.float64:
-            n = 10
+        def mean_squared_error(self) -> float:
+            n = self.last_layer_size
             return (sum([(self.corrV[i] - self.predV[i])**2 for i in range(n)])) / n
 
         def cross_entropy_loss(self) -> np.float64:
@@ -147,6 +148,9 @@ def neural_network_process(conn) -> None:
             last = self.num_of_layers - 1
             for x in range(last, 0, -1):
                 l = self.layers[x]
+                if l.node_activationsM is None:
+                    print(f"Unkown error: node activation matrix for layer {x} is None.")
+                    exit(1)
                 if x == last:
                     l.node_gradientsM = l.node_activationsM - corrM
                 else:
@@ -155,12 +159,15 @@ def neural_network_process(conn) -> None:
                     l.node_gradientsM = blameM * self._relu_derivative(l.raw)
             for x in range(1, last + 1):
                 l = self.layers[x]
+                if l.node_activationsM is None:
+                    print(f"Unkown error: node activation matrix for layer {x} is None.")
+                    exit(1)
                 pl = self.layers[x - 1]
                 l.weights_of_inbound_connectionsM -= LEARNING_RATE * (pl.node_activationsM.T @ l.node_gradientsM) / batch_size
                 l.node_biasesV -= LEARNING_RATE * l.node_gradientsM.mean(axis=0)
 
         def test(self, image: np.ndarray, corr: Optional[np.uint8] = None) -> int:
-            self.update_input_layer(image, None)
+            self.update_input_layer(image, corr)
             self.global_forward_pass_loop()
             return self.get_pred()
 
@@ -173,7 +180,7 @@ def neural_network_process(conn) -> None:
                 Layer(64, num_of_nodes_prev=128),
                 Layer(10, num_of_nodes_prev=64)
                 ]
-        network = Network(layers, 5)
+        network = Network(layers, 5, 10)
         return network
 
     def background_training(network):
@@ -181,7 +188,6 @@ def neural_network_process(conn) -> None:
         print("Starting training...")
         for epoch in range(10):
             idx = np.random.permutation(len(flat_train))
-            total_loss = 0
             num_batches = 0
             for start in range(0, len(flat_train), BATCH_SIZE):
                 batch_idx = idx[start:start + BATCH_SIZE]
@@ -212,7 +218,7 @@ def neural_network_process(conn) -> None:
             break
 
 
-def get_colors(start_color: Tuple[int], end_color: Tuple[int]) -> List[Tuple[int]]:
+def get_colors(start_color: Tuple[int, int, int], end_color: Tuple[int, int, int]) -> List[Tuple[int]]:
     steps = 100
     gradient = []
     for i in range(steps):
@@ -271,7 +277,11 @@ def drawing_process() -> None:
                     gray = np.dot(pix_arr[..., :3], [0.299, 0.587, 0.114]).T
                     small_arr = gray.reshape(28, scaler, 28, scaler).mean(axis=(1, 3))
                     small_arr = small_arr / 255.0
-                    cy, cx = np.average(np.indices(small_arr.shape), weights=small_arr + 1e-6, axis=(1, 2))
+                    y_ind, x_ind = np.indices(small_arr.shape)
+                    weights = small_arr + 1e-6
+                    total = weights.sum()
+                    cy = np.sum(y_ind * weights) / total
+                    cx = np.sum(x_ind * weights) / total
                     shift_y = int(round(14 - cy))
                     shift_x = int(round(14 - cx))
                     small_arr = np.roll(small_arr, shift_y, axis=0)
